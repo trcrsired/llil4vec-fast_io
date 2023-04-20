@@ -73,8 +73,6 @@
 
 #include <fast_io.h>
 
-static_assert(sizeof(size_t) == sizeof(int64_t), "size_t too small, need a 64-bit compile");
-
 // ----------------------------------------------------------------------------
 
 typedef long long llil_int_type;
@@ -87,101 +85,54 @@ typedef long long llil_int_type;
 // worth trying for MAX_STR_LEN_L up to about 30.
 // See also https://backlinko.com/google-keyword-study
 //
-// To use (limited length) fixed length strings uncomment the next line.
-#define MAX_STR_LEN_L 12
 
-
-struct max_str_len_str_type : std::array<char, MAX_STR_LEN_L> {
+struct int_str_type
+{
+   ::std::int_least64_t value;
+   ::std::string_view name;
 };
 
-inline constexpr auto operator==(max_str_len_str_type const& a,max_str_len_str_type const &b) noexcept
-{
-   return ::std::equal(a.data(),a.data()+MAX_STR_LEN_L,b.data());
-}
-
-inline constexpr auto operator<=>(max_str_len_str_type const& a,max_str_len_str_type const &b) noexcept
-{
-   return ::std::lexicographical_compare(a.data(),a.data()+MAX_STR_LEN_L,b.data(),b.data()+MAX_STR_LEN_L);
-}
-
-inline constexpr bool use_max_str_len_str
-{
-#ifdef MAX_STR_LEN_L
-true
-#endif
-};
-
-using str_type         = ::std::conditional_t<use_max_str_len_str,max_str_len_str_type,std::basic_string<char>>;
-
-
-using int_str_type     = std::pair<llil_int_type, str_type>;
 using vec_int_str_type = std::vector<int_str_type>;
 
-inline ::fast_io::native_file_loader get_properties(
+using file_loader_type = ::fast_io::allocation_file_loader;
+
+inline auto get_properties(
    const char*        fname,       //  in: the input file name
    vec_int_str_type&  vec_ret)     // out: a vector of properties
 { 
    using namespace ::fast_io::mnp;
 
-
-#if 0
-#ifdef USE_NATIVE_FILE_LOADER
-// Map file to memory.
-   ::fast_io::native_file_loader
-#else
-   ::fast_io::allocation_file_loader
-#endif
-   loader(os_c_str(fname));
-
-   // Get raw pointer to mapped memory.
-   char* buffer = (char*) loader.data();
-   ::std::size_t filesize = loader.size();
-
-   // Process mapped file.
-   ::std::size_t length, strpos = 0;
-   llil_int_type count;
-
-   for (::std::size_t pos = 0; pos < filesize; pos++) {
-      if (buffer[pos] == '\t') {
-         length = pos - strpos;
-/*
-         count  = fast_atoll64( &buffer[pos + 1], &pos );
-*/
-         ::std::int_least64_t val{};
-         auto [it,ec] = ::fast_io::parse_by_scan(buffer+pos,buffer+filesize,val);
-         if(ec!=::fast_io::parse_code::ok)
-         {
-            perr("error\n");
-            abort();
-         }
-         count = static_cast<::std::uint_least64_t>(val);
-         if(val<0)
-         {
-            count = static_cast<::std::uint_least64_t>(static_cast<::std::uint_least64_t>(0)-count);
-         }
-         pos = static_cast<::std::size_t>(it-buffer);
-         if constexpr(use_max_str_len_str)
-         {
-         // {} initializes all elements of fixword to '\0'
-         str_type fixword {};
-         ::std::size_t to_copy{MAX_STR_LEN_L};
-         if( length < MAX_STR_LEN_L )
-         {
-            to_copy = length;
-         }
-         ::memcpy( fixword.data(), &buffer[strpos], length );
-         vec_ret.emplace_back( count, fixword );
-         }
-         else
-         {
-#ifndef MAX_STR_LEN_L
-          vec_ret.emplace_back( count, str_type(&buffer[strpos], length) );
-#endif
-         }
-         strpos = pos = ( buffer[pos + 1] == '\r' ) ? pos + 3 : pos + 2;
+   file_loader_type loader(os_c_str(fname));
+   for(char const *first{loader.data()},*last{loader.data()+loader.size()};first!=last;)
+   {
+      auto start_ptr{first};
+      first=::fast_io::find_lf(first,last);
+      auto end_ptr{first};
+      if(first!=last)
+      {
+         ++first;
       }
+      if(start_ptr==end_ptr)
+      {
+         continue;
+      }
+      auto chtposition{std::find(start_ptr,end_ptr,'\t')};
+
+      ::std::make_signed_t<::std::size_t> val{};
+      auto [it,ec] = ::fast_io::parse_by_scan(chtposition,end_ptr,val);
+      if(ec!=::fast_io::parse_code::ok)
+      {
+         abort();
+      }
+      ::std::size_t count = static_cast<::std::size_t>(val);
+      if(val<0)
+      {
+         ::std::size_t count = static_cast<::std::size_t>(static_cast<::std::size_t>(0)-count);
+      }
+
+      vec_ret.push_back(int_str_type{val,::std::string_view(start_ptr,chtposition)});
    }
-#endif
+   return loader;
 }
 
 
@@ -190,28 +141,29 @@ inline void reduce_vec(
    auto& vec    // vector elements to reduce
 )
 {
-   if (vec.size() > 0) {
-      auto it1 = vec.begin(); auto itr = it1; auto itw = it1;
-      auto it2 = vec.end();
-      auto count     = itr->first;
-      auto name_last = itr->second;
-      for ( ++itr; itr != it2; ++itr ) {
-         if ( itr->second == name_last ) {
-            count += itr->first;
-         }
-         else {
-            itw->first  = count;
-            itw->second = name_last, ++itw;
-            count     = itr->first;
-            name_last = itr->second;
-         }
-      }
-      itw->first  = count;
-      itw->second = name_last;
-      vec.resize( std::distance(it1, ++itw) );
+   if (vec.empty())
+   {
+      return;
    }
+   auto it1 = vec.begin(); auto itr = it1; auto itw = it1;
+   auto it2 = vec.end();
+   auto count     = itr->value;
+   auto name_last = itr->name;
+   for ( ++itr; itr != it2; ++itr ) {
+      if ( itr->name == name_last ) {
+         count += itr->value;
+      }
+      else {
+         itw->value  = count;
+         itw->name = name_last, ++itw;
+         count     = itr->value;
+         name_last = itr->name;
+      }
+   }
+   itw->value  = count;
+   itw->name = name_last;
+   vec.resize( std::distance(it1, ++itw) );
 }
-
 
 inline constexpr auto elaspe_time(
    auto cend,
@@ -276,7 +228,7 @@ int main(int argc, char* argv[])
    // Create the vector of properties
    vec_int_str_type propvec;
 
-   ::std::vector<::fast_io::allocation_file_loader> loaders;
+   ::std::vector<file_loader_type> loaders;
    // Run parallel, depending on the number of threads
 #ifdef _OPENMP
    if ( nthrs == 1 || nfiles == 1 )
@@ -316,14 +268,14 @@ int main(int argc, char* argv[])
    std::sort(
       propvec.begin(), propvec.end(),
       [](const int_str_type& left, const int_str_type& right) {
-         return left.second < right.second;
+         return left.name < right.name;
       }
    );
 #else
    boost::sort::block_indirect_sort(
       propvec.begin(), propvec.end(),
       [](const int_str_type& left, const int_str_type& right) {
-         return left.second < right.second;
+         return left.name < right.name;
       },
       nthrs_sort
    );
@@ -346,9 +298,9 @@ int main(int argc, char* argv[])
       // Standard sort
       propvec.begin(), propvec.end(),
       [](const int_str_type& left, const int_str_type& right) {
-         return left.first != right.first
-            ? left.first  > right.first
-            : left.second < right.second;
+         return left.value != right.value
+            ? left.value  > right.value
+            : left.name < right.name;
       }
    );
 #else
@@ -356,9 +308,9 @@ int main(int argc, char* argv[])
       // Parallel sort
       propvec.begin(), propvec.end(),
       [](const int_str_type& left, const int_str_type& right) {
-         return left.first != right.first
-            ? left.first  > right.first
-            : left.second < right.second;
+         return left.value != right.value
+            ? left.value  > right.value
+            : left.name < right.name;
       },
       nthrs_sort
    );
@@ -370,14 +322,7 @@ int main(int argc, char* argv[])
    {
       fast_io::out_buf_type obf(fast_io::out());
       for ( auto const& n : propvec )
-         if constexpr(use_max_str_len_str)
-         {
-            println(obf,fast_io::mnp::os_c_str(n.second.data(), MAX_STR_LEN_L), "\t", n.first);
-         }
-         else
-         {
-            println(obf,n.second, "\t", n.first);
-         }
+         println(obf,n.name, "\t", n.value);
    }
    cend3 = ::fast_io::posix_clock_gettime(::fast_io::posix_clock_id::realtime);
 
@@ -393,7 +338,7 @@ int main(int argc, char* argv[])
 
    // Hack to see Private Bytes in Windows Task Manager
    // (uncomment next line so process doesn't exit too quickly)
-   // std::this_thread::sleep_for(milliseconds(9000));
+   // std::this_thread::sleep_for(millinames(9000));
 
    return 0;
 }
