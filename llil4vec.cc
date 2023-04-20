@@ -94,7 +94,7 @@ typedef long long llil_int_type;
 // See also https://backlinko.com/google-keyword-study
 //
 // To use (limited length) fixed length strings uncomment the next line.
-#define MAX_STR_LEN_L 12
+//#define MAX_STR_LEN_L 12
 
 #ifdef MAX_STR_LEN_L
 struct str_type : std::array<char, MAX_STR_LEN_L> {
@@ -420,10 +420,10 @@ int main(int argc, char* argv[])
    // Output the sorted vector
 #ifdef MAX_STR_LEN_L
    for ( auto const& n : propvec )
-      ::print(fast_io::concatln(fast_io::mnp::os_c_str(n.second.data(), MAX_STR_LEN_L), "\t", n.first));
+      println(fast_io::mnp::os_c_str(n.second.data(), MAX_STR_LEN_L), "\t", n.first);
 #else
    for ( auto const& n : propvec )
-      ::print(fast_io::concatln(n.second, "\t", n.first));
+      println(n.second, "\t", n.first);
 #endif
 
    cend3 = high_resolution_clock::now();
