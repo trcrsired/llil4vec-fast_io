@@ -329,7 +329,7 @@ int main(int argc, char* argv[])
 
    cend1 = ::fast_io::posix_clock_gettime(::fast_io::posix_clock_id::realtime);
    auto ctaken1 = elaspe_time(cend1, cstart1);
-   perr("sort properties     ",ctaken1," secs\n");
+   perr("get properties     ",ctaken1," secs\n");
 
    cstart2 = ::fast_io::posix_clock_gettime(::fast_io::posix_clock_id::realtime);
 
