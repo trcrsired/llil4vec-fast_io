@@ -114,7 +114,13 @@ struct int_str_type
 
 using vec_int_str_type = ::fast_io::vector<int_str_type>;
 
-using file_loader_type = ::fast_io::allocation_file_loader;
+using file_loader_type =
+#ifdef USE_ALLOCATION_FILE_LOADER
+::fast_io::allocation_file_loader
+#else
+::fast_io::native_file_loader
+#endif
+;
 
 inline constexpr ::std::uint_least64_t compute_hashval_with_strvw(char const *first,char const *last) noexcept
 {
