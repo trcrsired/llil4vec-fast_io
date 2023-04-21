@@ -47,21 +47,18 @@
 
 #include <thread>
 
-#include <cstdio>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <ctime>
 
-#include <string>
-#include <array>
 #include <vector>
 #include <string_view>
 #include <utility>
 #include <iterator>
 #include <execution>
 #include <algorithm>
+#include <bit>
 
 #if USE_BOOST_PARALLEL_SORT > 0
 #include <boost/sort/sort.hpp>
@@ -75,8 +72,6 @@
 
 // ----------------------------------------------------------------------------
 
-typedef long long llil_int_type;
-
 // All words in big1.txt, big2.txt, big3.txt are <= 6 chars in length.
 // big.txt  max word length is 6
 // long.txt max word length is 208
@@ -86,15 +81,59 @@ typedef long long llil_int_type;
 // See also https://backlinko.com/google-keyword-study
 //
 
+struct strhash_view
+{
+   ::std::uint_least64_t hashval;
+   ::std::string_view strvw;
+};
+
+inline constexpr bool operator==(strhash_view const& a, strhash_view const &b) noexcept
+{
+   return a.hashval == b.hashval && a.strvw == b.strvw;
+}
+
+inline constexpr auto operator<(strhash_view const& a, strhash_view const &b) noexcept
+{
+   if(a.hashval==b.hashval)
+   {
+      return a.strvw<b.strvw;
+   }
+   return a.hashval<b.hashval;
+}
+
 struct int_str_type
 {
    ::std::int_least64_t value;
-   ::std::string_view name;
+   strhash_view name;
 };
 
 using vec_int_str_type = std::vector<int_str_type>;
 
 using file_loader_type = ::fast_io::allocation_file_loader;
+
+inline constexpr ::std::uint_least64_t compute_hashval_with_strvw(char const *first,char const *last) noexcept
+{
+   ::std::size_t n{static_cast<::std::size_t>(last-first)};
+   ::std::uint_least64_t val;
+
+   if(sizeof(::std::uint_least64_t)<n)
+   {
+      n=sizeof(::std::uint_least64_t);
+   }
+#if __has_cpp_attribute(assume)
+   [[assume(n<=sizeof(::std::uint_least64_t))]];
+#endif
+   memcpy(std::addressof(val),first,n);
+   if constexpr(::std::endian::native != ::std::endian::big)
+   {
+#if __cpp_lib_byteswap >= 202110L
+      val = ::std::byteswap(val);
+#else
+      val = ::fast_io::byte_swap(val);
+#endif
+   }
+   return val;
+}
 
 inline auto get_properties(
    const char*        fname,       //  in: the input file name
@@ -130,7 +169,7 @@ inline auto get_properties(
          ::std::size_t count = static_cast<::std::size_t>(static_cast<::std::size_t>(0)-count);
       }
 
-      vec_ret.push_back(int_str_type{val,::std::string_view(start_ptr,chtposition)});
+      vec_ret.push_back(int_str_type{val,{compute_hashval_with_strvw(start_ptr,chtposition),::std::string_view(start_ptr,chtposition)}});
    }
    return loader;
 }
@@ -322,7 +361,7 @@ int main(int argc, char* argv[])
    {
       fast_io::out_buf_type obf(fast_io::out());
       for ( auto const& n : propvec )
-         println(obf,n.name, "\t", n.value);
+         println(obf,n.name.strvw, "\t", n.value);
    }
    cend3 = ::fast_io::posix_clock_gettime(::fast_io::posix_clock_id::realtime);
 
