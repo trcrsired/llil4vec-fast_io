@@ -70,6 +70,8 @@
 
 #include <fast_io.h>
 
+using namespace ::fast_io::io;
+
 // ----------------------------------------------------------------------------
 
 // All words in big1.txt, big2.txt, big3.txt are <= 6 chars in length.
